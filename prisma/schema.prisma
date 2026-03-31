@@ -1,0 +1,340 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────
+// FIXED ENUMS (core system logic — not user-editable)
+// ─────────────────────────────────────────────────
+
+enum ItemType {
+  TASK
+  BUG
+  FEATURE
+  ENQUIRY
+  NOTE
+  FOLLOW_UP
+  DECISION
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ItemSource {
+  MANUAL
+  MEETING_INTAKE
+  AI_SUGGESTED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum MeetingType {
+  STANDUP
+  PLANNING
+  REVIEW
+  CLIENT_CALL
+  RETROSPECTIVE
+  AD_HOC
+  OTHER
+}
+
+// ─────────────────────────────────────────────────
+// CONFIGURABLE: WORKSPACE STATUS
+// Replaces hardcoded status enum — user can rename, reorder, add, archive
+// ─────────────────────────────────────────────────
+
+model WorkspaceStatus {
+  id         String   @id @default(cuid())
+  name       String
+  color      String   @default("#94a3b8")
+  order      Int
+  isDefault  Boolean  @default(false)
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  workItems WorkItem[]
+
+  @@index([order])
+}
+
+// ─────────────────────────────────────────────────
+// PROJECT
+// ─────────────────────────────────────────────────
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  color       String   @default("#6366f1")
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workItems   WorkItem[]
+  meetings    Meeting[]
+  versions    Version[]
+  teamMembers TeamMember[]
+  documents   ProjectDocument[]
+
+  @@index([isArchived])
+}
+
+// ─────────────────────────────────────────────────
+// CONFIGURABLE: VERSION (per project)
+// Replaces VersionTag enum — user can add/rename/reorder per project
+// ─────────────────────────────────────────────────
+
+model Version {
+  id         String   @id @default(cuid())
+  name       String
+  order      Int      @default(0)
+  isArchived Boolean  @default(false)
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  workItems WorkItem[]
+
+  @@index([projectId])
+  @@index([projectId, order])
+}
+
+// ─────────────────────────────────────────────────
+// CONFIGURABLE: TEAM MEMBER (per project)
+// ─────────────────────────────────────────────────
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  name      String
+  role      String?
+  email     String?
+  isActive  Boolean  @default(true)
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workItems WorkItem[]
+
+  @@index([projectId])
+}
+
+// ─────────────────────────────────────────────────
+// WORK ITEM (unified model)
+// ─────────────────────────────────────────────────
+
+model WorkItem {
+  id             String         @id @default(cuid())
+  title          String
+  description    String?
+
+  type           ItemType
+  priority       Priority       @default(MEDIUM)
+  source         ItemSource     @default(MANUAL)
+  approvalStatus ApprovalStatus @default(APPROVED)
+
+  statusId       String
+  status         WorkspaceStatus @relation(fields: [statusId], references: [id])
+
+  projectId      String
+  project        Project        @relation(fields: [projectId], references: [id])
+
+  assigneeId     String?
+  assignee       TeamMember?    @relation(fields: [assigneeId], references: [id])
+
+  versionId      String?
+  version        Version?       @relation(fields: [versionId], references: [id])
+
+  meetingId      String?
+  meeting        Meeting?       @relation(fields: [meetingId], references: [id])
+
+  dueDate        DateTime?
+  internalNotes  String?
+  clientSafeSummary String?
+  tags           String[]       @default([])
+
+  // Type-specific fields stored as JSONB
+  // BUG:     { stepsToReproduce, expectedBehavior, actualBehavior, severity }
+  // FEATURE: { businessGoal, userValue, acceptanceNotes }
+  // ENQUIRY: { askedBy, responseNeededFrom, responseDueDate }
+  metadata       Json?
+
+  comments       Comment[]
+  activityLogs   ActivityLog[]
+  embedding      WorkItemEmbedding?
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  archivedAt     DateTime?
+
+  @@index([projectId])
+  @@index([statusId])
+  @@index([type])
+  @@index([approvalStatus])
+  @@index([dueDate])
+  @@index([meetingId])
+  @@index([assigneeId])
+  @@index([versionId])
+}
+
+// ─────────────────────────────────────────────────
+// MEETING RECORD
+// ─────────────────────────────────────────────────
+
+model Meeting {
+  id             String         @id @default(cuid())
+  title          String
+  meetingDate    DateTime
+  meetingType    MeetingType    @default(AD_HOC)
+  participants   String[]       @default([])
+
+  projectId      String
+  project        Project        @relation(fields: [projectId], references: [id])
+
+  rawNotes       String
+  aiSummary      String?
+  decisionsMade  String?
+  openQuestions  String?
+
+  approvalStatus ApprovalStatus @default(PENDING)
+  itemsApproved  Int            @default(0)
+  itemsRejected  Int            @default(0)
+  itemsPending   Int            @default(0)
+
+  workItems      WorkItem[]
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([projectId])
+  @@index([meetingDate])
+  @@index([approvalStatus])
+}
+
+// ─────────────────────────────────────────────────
+// COMMENT
+// ─────────────────────────────────────────────────
+
+model Comment {
+  id         String   @id @default(cuid())
+  body       String
+  authorName String   @default("Admin")
+  workItemId String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([workItemId])
+}
+
+// ─────────────────────────────────────────────────
+// ACTIVITY LOG (immutable audit trail)
+// ─────────────────────────────────────────────────
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  workItemId String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  action     String
+  fromValue  String?
+  toValue    String?
+  actorName  String   @default("Admin")
+  createdAt  DateTime @default(now())
+
+  @@index([workItemId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────
+// RAG: PROJECT CONTEXT DOCUMENTS
+// embedding stored as float JSON array for now
+// TODO: migrate to Unsupported("vector(1536)") once pgvector is available
+// ─────────────────────────────────────────────────
+
+model ProjectDocument {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  filename    String
+  contentText String
+  chunkIndex  Int      @default(0)
+  embedding   Json?    // float[] stored as JSON; swap to vector(1536) with pgvector
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+}
+
+// ─────────────────────────────────────────────────
+// RAG: WORK ITEM EMBEDDINGS (history flywheel)
+// Populated when items are approved; used as few-shot examples
+// ─────────────────────────────────────────────────
+
+model WorkItemEmbedding {
+  id         String   @id @default(cuid())
+  workItemId String   @unique
+  workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  embedding  Json?    // float[] stored as JSON; swap to vector(1536) with pgvector
+  updatedAt  DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────
+// NEXTAUTH REQUIRED MODELS
+// ─────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

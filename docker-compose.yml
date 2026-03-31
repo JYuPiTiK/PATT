@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: ankane/pgvector
+    environment:
+      POSTGRES_USER: patt
+      POSTGRES_PASSWORD: patt_dev_password
+      POSTGRES_DB: patt_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
