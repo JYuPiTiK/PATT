@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
-import Link from "next/link"
 import { prisma } from "@/lib/prisma"
+import { ProjectNav } from "@/components/layout/ProjectNav"
 
 interface ProjectLayoutProps {
   children: React.ReactNode
@@ -34,17 +34,7 @@ export default async function ProjectLayout({ children, params }: ProjectLayoutP
         <h1 className="text-xl font-bold">{project.name}</h1>
       </div>
 
-      <nav className="flex gap-1 border-b -mb-6">
-        {tabs.map((tab) => (
-          <Link
-            key={tab.href}
-            href={tab.href}
-            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border-b-2 border-transparent hover:border-border transition-colors"
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </nav>
+      <ProjectNav tabs={tabs} />
 
       <div className="pt-4">{children}</div>
     </div>
