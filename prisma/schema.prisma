@@ -99,13 +99,15 @@ model Project {
 // ─────────────────────────────────────────────────
 
 model Version {
-  id         String   @id @default(cuid())
-  name       String
-  order      Int      @default(0)
-  isArchived Boolean  @default(false)
-  projectId  String
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  releaseDate DateTime?
+  order       Int       @default(0)
+  isArchived  Boolean   @default(false)
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
 
   workItems WorkItem[]
 
@@ -118,11 +120,12 @@ model Version {
 // ─────────────────────────────────────────────────
 
 model TeamMember {
-  id        String   @id @default(cuid())
-  name      String
-  role      String?
-  email     String?
-  isActive  Boolean  @default(true)
+  id          String   @id @default(cuid())
+  name        String
+  role        String?
+  email       String?
+  avatarColor String   @default("#6366f1")
+  isActive    Boolean  @default(true)
   projectId String
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
@@ -233,6 +236,7 @@ model Comment {
   id         String   @id @default(cuid())
   body       String
   authorName String   @default("Admin")
+  isInternal Boolean  @default(false)
   workItemId String
   workItem   WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
